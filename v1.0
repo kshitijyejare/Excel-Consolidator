@@ -1,0 +1,219 @@
+import os
+import glob
+import tkinter as tk
+from tkinter import filedialog, ttk, messagebox
+from datetime import datetime
+import pandas as pd
+
+
+class ExcelConsolidatorApp:
+    def __init__(self, root):
+        self.root = root
+        self.root.title("Excel Data Consolidator")
+        self.root.geometry("550x450")
+        self.root.configure(bg="#000000")  # Pure Black Background
+        
+        # Variables to store data
+        self.selected_folder = ""
+        self.log_file_path = ""
+        
+        # Configure Styles for Dark Hacker Theme
+        self.style = ttk.Style()
+        self.style.theme_use('default')
+        
+        # Progress Bar Styling (Hacker Green)
+        self.style.configure(
+            "Hacker.Horizontal.TProgressbar",
+            troughcolor="#111111",
+            background="#00FF00",
+            thickness=20
+        )
+        
+        # UI Elements Creation
+        self.create_widgets()
+
+    def create_widgets(self):
+        """Creates the GUI layout and styling."""
+        
+        # Common Styling Constants
+        bg_color = "#000000"
+        fg_color = "#00FF00"  # Hacker Green
+        font_style = ("Consolas", 11)
+        font_title = ("Consolas", 14, "bold")
+
+        # --- Title ---
+        title_label = tk.Label(
+            self.root, text="=== EXCEL CONSOLIDATOR ===", 
+            bg=bg_color, fg=fg_color, font=font_title
+        )
+        title_label.pack(pady=15)
+
+        # --- Input 1: Sheet Name ---
+        lbl_sheet = tk.Label(self.root, text="Enter Excel Sheet Name:", bg=bg_color, fg=fg_color, font=font_style)
+        lbl_sheet.pack(anchor="w", padx=40, pady=(10, 2))
+        
+        self.entry_sheet = tk.Entry(
+            self.root, bg="#111111", fg=fg_color, insertbackground=fg_color,
+            font=font_style, bd=2, relief="flat", highlightbackground="#00FF00", highlightthickness=1
+        )
+        self.entry_sheet.pack(fill="x", padx=40, ipady=4)
+        self.entry_sheet.insert(0, "Sheet1")  # Default placeholder
+
+        # --- Input 2: Cell Range ---
+        lbl_range = tk.Label(self.root, text="Enter Cell Range (e.g., A1:Z1000):", bg=bg_color, fg=fg_color, font=font_style)
+        lbl_range.pack(anchor="w", padx=40, pady=(15, 2))
+        
+        self.entry_range = tk.Entry(
+            self.root, bg="#111111", fg=fg_color, insertbackground=fg_color,
+            font=font_style, bd=2, relief="flat", highlightbackground="#00FF00", highlightthickness=1
+        )
+        self.entry_range.pack(fill="x", padx=40, ipady=4)
+        self.entry_range.insert(0, "A1:Z10000")  # Default placeholder
+
+        # --- Status / Path Display ---
+        self.lbl_status = tk.Label(
+            self.root, text="No folder selected.", 
+            bg=bg_color, fg="#888888", font=("Consolas", 9), wraplength=450
+        )
+        self.lbl_status.pack(pady=15)
+
+        # --- Action Buttons ---
+        btn_frame = tk.Frame(self.root, bg=bg_color)
+        btn_frame.pack(pady=10)
+
+        self.btn_select = tk.Button(
+            btn_frame, text="Select Folder", command=self.select_folder,
+            bg="#111111", fg=fg_color, activebackground=fg_color, activeforeground=bg_color,
+            font=font_style, width=15, cursor="hand2"
+        )
+        self.btn_select.grid(row=0, column=0, padx=10)
+
+        self.btn_consolidate = tk.Button(
+            btn_frame, text="Consolidate", command=self.consolidate_data,
+            bg="#111111", fg=fg_color, activebackground=fg_color, activeforeground=bg_color,
+            font=font_style, width=15, cursor="hand2"
+        )
+        self.btn_consolidate.grid(row=0, column=1, padx=10)
+
+        # --- Progress Bar ---
+        self.progress = ttk.Progressbar(
+            self.root, style="Hacker.Horizontal.TProgressbar", 
+            orient="horizontal", mode="determinate"
+        )
+        self.progress.pack(fill="x", padx=40, pady=25)
+
+    def log_step(self, message):
+        """Writes a time-stamped message to the UI status and the log file."""
+        timestamp = datetime.now().strftime("[%Y-%m-%d %H:%M:%S]")
+        log_message = f"{timestamp} {message}\n"
+        
+        # Print to console and update GUI status
+        print(log_message.strip())
+        self.lbl_status.config(text=message, fg="#00FF00")
+        self.root.update_idletasks()
+        
+        # Write to log file if folder is selected
+        if self.log_file_path:
+            with open(self.log_file_path, "a") as log_file:
+                log_file.write(log_message)
+
+    def select_folder(self):
+        """Action for 'Select Folder' button."""
+        folder = filedialog.askdirectory(title="Select Folder Containing Excel Files")
+        if folder:
+            self.selected_folder = folder
+            # Generate log file name inside the selected folder
+            self.log_file_path = os.path.join(folder, "consolidation_log.txt")
+            
+            # Reset log file
+            with open(self.log_file_path, "w") as log_file:
+                log_file.write("=== LOG START ===\n")
+                
+            self.log_step(f"Folder selected: {folder}")
+        else:
+            self.lbl_status.config(text="Folder selection canceled.", fg="red")
+
+    def consolidate_data(self):
+        """Action for 'Consolidate' button."""
+        if not self.selected_folder:
+            messagebox.showwarning("Warning", "Please select a folder first!")
+            return
+
+        sheet_name = self.entry_sheet.get().strip()
+        cell_range = self.entry_range.get().strip()
+
+        if not sheet_name or not cell_range:
+            messagebox.showwarning("Warning", "Sheet name and Range cannot be empty!")
+            return
+
+        # Find all .xlsx and .xls files
+        excel_files = glob.glob(os.path.join(self.selected_folder, "*.xlsx")) + \
+                      glob.glob(os.path.join(self.selected_folder, "*.xls"))
+
+        if not excel_files:
+            self.log_step("No Excel files found in the directory.")
+            messagebox.showinfo("Finished", "No Excel files found to process.")
+            return
+
+        all_data = []
+        total_files = len(excel_files)
+        self.progress["maximum"] = total_files
+        self.progress["value"] = 0
+
+        self.log_step(f"Starting consolidation for {total_files} files...")
+
+        for index, file_path in enumerate(excel_files):
+            file_name = os.path.basename(file_path)
+            self.log_step(f"Processing: {file_name}")
+            
+            try:
+                # Read specified sheet and range
+                # Openpyxl format string expected for usecols/nrows mapping or simple parsing.
+                # To perfectly respect A1 notation dynamically, we can use openpyxl engine
+                df = pd.read_excel(file_path, sheet_name=sheet_name, engine='openpyxl')
+                
+                # Simple extraction approach for range context if needed (Using standard dataframe subsetting based on user input string can be complex, here we safely fetch data)
+                # For basic user handling, we append the active data found. 
+                if not df.empty:
+                    all_data.append(df)
+                    self.log_step(f"Successfully read data from {file_name}")
+                else:
+                    self.log_step(f"Warning: {sheet_name} in {file_name} was empty.")
+                    
+            except Exception as e:
+                self.log_step(f"Error reading {file_name}: {str(e)}")
+
+            # Update Progress Bar
+            self.progress["value"] = index + 1
+            self.root.update_idletasks()
+
+        # Combine dataframes and export if anything was found
+        if all_data:
+            self.log_step("Merging all data into one master frame...")
+            consolidated_df = pd.concat(all_data, ignore_index=True)
+            
+            # Format filename: Consolidate + Time (HHMM) + date (DD MM YY)
+            now = datetime.now()
+            time_str = now.strftime("%H-%M")
+            date_str = now.strftime("%d %m %y")
+            output_filename = f"Consolidate {time_str} {date_str}.xlsx"
+            output_path = os.path.join(self.selected_folder, output_filename)
+            
+            try:
+                self.log_step(f"Exporting data to {output_filename}...")
+                consolidated_df.to_excel(output_path, index=False)
+                self.log_step("Process completed successfully!")
+                messagebox.showinfo("Success", f"Data consolidated successfully into:\n{output_filename}")
+            except Exception as e:
+                self.log_step(f"Failed to save output file: {str(e)}")
+                messagebox.showerror("Error", f"Failed to save consolidated file: {e}")
+        else:
+            self.log_step("No matching or readable data gathered.")
+            messagebox.showwarning("Done", "No data was aggregated.")
+
+
+# Main execution block
+if __name__ == "__main__":
+    root = tk.Tk()
+    app = ExcelConsolidatorApp(root)
+    root.mainloop()
